@@ -7,6 +7,9 @@ ARG SOURCE_IMAGE="${SOURCE_IMAGE:-$BASE_IMAGE_NAME-$BASE_IMAGE_FLAVOR}"
 ARG BASE_IMAGE="ghcr.io/ublue-os/${SOURCE_IMAGE}"
 ARG FEDORA_MAJOR_VERSION="${FEDORA_MAJOR_VERSION:-40}"
 
+FROM ghcr.io/ublue-os/akmods:${KERNEL_FLAVOR}-${FEDORA_MAJOR_VERSION} as akmods
+FROM ghcr.io/ublue-os/akmods-extra:${KERNEL_FLAVOR}-${FEDORA_MAJOR_VERSION} as akmods-extra
+
 FROM ${BASE_IMAGE}:${FEDORA_MAJOR_VERSION} AS bazzite
 
 ARG IMAGE_NAME="${IMAGE_NAME:-bazzite}"
@@ -111,8 +114,8 @@ RUN mkdir -p /tmp/mediatek-firmware && \
     ostree container commit
 
 # Add ublue packages, add needed negativo17 repo and then immediately disable due to incompatibility with RPMFusion
-COPY --from=ghcr.io/ublue-os/akmods:${KERNEL_FLAVOR}-${FEDORA_MAJOR_VERSION} /rpms /tmp/akmods-rpms
-COPY --from=ghcr.io/ublue-os/akmods-extra:${KERNEL_FLAVOR}-${FEDORA_MAJOR_VERSION} /rpms /tmp/akmods-rpms
+COPY --from=akmods /rpms /tmp/akmods-rpms
+COPY --from=akmods-extra /rpms /tmp/akmods-rpms
 RUN sed -i 's@enabled=0@enabled=1@g' /etc/yum.repos.d/_copr_ublue-os-akmods.repo && \
     curl -Lo /etc/yum.repos.d/negativo17-fedora-multimedia.repo https://negativo17.org/repos/fedora-multimedia.repo && \
     rpm-ostree install \
@@ -532,6 +535,16 @@ RUN rpm-ostree install \
     sed -i~ -E 's/=.\$\(command -v (nft|ip6?tables-legacy).*/=/g' /usr/lib/waydroid/data/scripts/waydroid-net.sh && \
     ostree container commit
 
+# Homebrew
+RUN touch /.dockerenv && \
+    mkdir -p /var/home && \
+    mkdir -p /var/roothome && \
+    curl -Lo /tmp/brew-install https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh && \
+    chmod +x /tmp/brew-install && \
+    /tmp/brew-install && \
+    tar --zstd -cvf /usr/share/homebrew.tar.zst /home/linuxbrew/.linuxbrew && \
+    ostree container commit
+
 # Cleanup & Finalize
 COPY system_files/overrides /
 RUN /usr/libexec/containerbuild/build-initramfs && \
@@ -592,6 +605,9 @@ RUN /usr/libexec/containerbuild/build-initramfs && \
     sed -i 's/#DefaultTimeoutStopSec.*/DefaultTimeoutStopSec=15s/' /usr/lib/systemd/system.conf && \
     mkdir -p /usr/etc/flatpak/remotes.d && \
     curl -Lo /usr/etc/flatpak/remotes.d/flathub.flatpakrepo https://dl.flathub.org/repo/flathub.flatpakrepo && \
+    systemctl enable brew-setup.service && \
+    systemctl enable brew-upgrade.timer && \
+    systemctl enable brew-update.timer && \
     systemctl enable com.system76.Scheduler.service && \
     systemctl enable btrfs-dedup@var-home.timer && \
     systemctl enable displaylink.service && \
@@ -767,6 +783,7 @@ RUN /usr/libexec/containerbuild/image-info && \
     systemctl disable batterylimit.service && \
     ostree container commit
 
+FROM ghcr.io/ublue-os/akmods-nvidia:${KERNEL_FLAVOR}-${FEDORA_MAJOR_VERSION} as nvidia-akmods
 FROM bazzite as bazzite-nvidia
 
 ARG IMAGE_NAME="${IMAGE_NAME:-bazzite-nvidia}"
@@ -794,7 +811,7 @@ RUN rpm-ostree override remove \
     ostree container commit
 
 # Install NVIDIA driver
-COPY --from=ghcr.io/ublue-os/akmods-nvidia:${KERNEL_FLAVOR}-${FEDORA_MAJOR_VERSION} /rpms /tmp/akmods-rpms
+COPY --from=nvidia-akmods /rpms /tmp/akmods-rpms
 RUN sed -i 's@enabled=0@enabled=1@g' /etc/yum.repos.d/rpmfusion-nonfree.repo && \
     sed -i 's@enabled=0@enabled=1@g' /etc/yum.repos.d/rpmfusion-nonfree-updates.repo && \
     sed -i 's@enabled=0@enabled=1@g' /etc/yum.repos.d/rpmfusion-nonfree-updates-testing.repo && \
