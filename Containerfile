@@ -346,6 +346,7 @@ RUN rpm-ostree install \
         cockpit-system \
         cockpit-navigator \
         cockpit-storaged \
+        ydotool \
         lsb_release && \
     pip install --prefix=/usr topgrade && \
     rpm-ostree install \
@@ -510,9 +511,7 @@ RUN if grep -q "kinoite" <<< "${BASE_IMAGE_NAME}"; then \
         --from repo=copr:copr.fedorainfracloud.org:ublue-os:staging \
             mutter \
             mutter-common \
-            gnome-shell \
-            vte291 \
-            vte-profile && \
+            gnome-shell && \
         rpm-ostree install \
             ptyxis \
             nautilus-open-any-terminal \
